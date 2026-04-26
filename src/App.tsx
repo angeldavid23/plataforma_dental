@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import type { Paciente, Tratamiento } from './types/supabase';
-import { User, Banknote, Plus, Search } from 'lucide-react'; // Añadimos Search
+import {  Banknote, Plus, Search } from 'lucide-react'; // Añadimos Search
 import { NuevoPaciente } from './components/NuevoPaciente.tsx'; 
 import { ModalAbono } from './components/ModalAbono';
 

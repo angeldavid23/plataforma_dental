@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { X, Banknote, Calendar, History } from 'lucide-react';
+import { Banknote, History } from 'lucide-react';
 
 export interface Abono {
   id: string;
