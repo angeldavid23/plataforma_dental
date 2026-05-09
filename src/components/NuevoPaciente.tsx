@@ -2,17 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   PlusCircle,
-  User,
-  Phone,
-  DollarSign,
   ClipboardList,
   Save,
   RotateCcw,
   FileText,
-  Activity,
-  MapPin,
   Briefcase,
-  Calendar,
   Heart
 } from 'lucide-react';
 
