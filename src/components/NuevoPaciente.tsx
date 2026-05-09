@@ -148,13 +148,27 @@ export const NuevoPaciente = ({
           .eq('id', pacienteId);
         if (errorPac) throw errorPac;
 
-        // 2. ACTUALIZAR TRATAMIENTO
+        // --- LÓGICA DE SALDO CORREGIDA ---
+        const tratamientoAnterior = datosIniciales.tratamientos?.[0];
+        let nuevoSaldo = costoNumerico;
+
+        if (tratamientoAnterior) {
+          const costoAnterior = tratamientoAnterior.costo_total || 0;
+          const saldoAnterior = tratamientoAnterior.saldo_pendiente || 0;
+          
+          // Calculamos la diferencia: Si el costo sube Q100, el saldo pendiente sube Q100.
+          // Si el costo no cambia, la diferencia es 0 y el saldo pendiente se queda como está.
+          const diferencia = costoNumerico - costoAnterior;
+          nuevoSaldo = Math.max(0, saldoAnterior + diferencia);
+        }
+
+        // 2. ACTUALIZAR TRATAMIENTO (Sin machacar el saldo injustamente)
         const { error: errorTrat } = await supabase
           .from('tratamientos')
           .update({
             nombre_servicio: servicio,
             costo_total: costoNumerico,
-            saldo_pendiente: costoNumerico 
+            saldo_pendiente: nuevoSaldo 
           })
           .eq('paciente_id', pacienteId);
         if (errorTrat) throw errorTrat;
@@ -184,7 +198,7 @@ export const NuevoPaciente = ({
         }]);
       }
 
-      // 4. GUARDAR NUEVOS REGISTROS DE ODONTOGRAMA (Solo los que no son "sano")
+      // 4. GUARDAR NUEVOS REGISTROS DE ODONTOGRAMA
       const registros = Object.entries(odontograma).map(([numero_diente, estado]) => ({
         paciente_id: pacienteId,
         numero_diente,
@@ -255,7 +269,7 @@ export const NuevoPaciente = ({
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2rem] border shadow-2xl max-w-7xl mx-auto mb-12 space-y-8">
-      {/* INFORMACIÓN GENERAL */}
+      {/* SECCIONES DE UI MANTENIDAS EXACTAMENTE IGUAL A TU CÓDIGO ORIGINAL */}
       <div className="bg-slate-50 p-6 rounded-3xl border">
         <h3 className="text-xs font-black text-slate-500 uppercase mb-6 flex items-center gap-2">
           <FileText className="w-4 h-4" /> Información General
@@ -298,7 +312,7 @@ export const NuevoPaciente = ({
         </div>
       </div>
 
-      {/* HISTORIA DENTAL */}
+      {/* RESTO DE SECCIONES... (HISTORIA DENTAL, MÉDICA, ODONTOGRAMA) */}
       <div className="bg-emerald-50 p-6 rounded-3xl border">
         <h3 className="text-xs font-black text-emerald-700 uppercase mb-4 flex items-center gap-2">
           <ClipboardList className="w-4 h-4" /> Historia Dental
@@ -321,7 +335,6 @@ export const NuevoPaciente = ({
         </div>
       </div>
 
-      {/* HISTORIA MÉDICA */}
       <div className="bg-red-50 p-6 rounded-3xl border">
         <h3 className="text-xs font-black text-red-700 uppercase mb-4 flex items-center gap-2">
           <Heart className="w-4 h-4" /> Historia Médica
@@ -339,7 +352,6 @@ export const NuevoPaciente = ({
         <textarea value={historiaMedica.observaciones} onChange={e => setHistoriaMedica({ ...historiaMedica, observaciones: e.target.value })} className="w-full border mt-4 p-3 rounded-xl text-sm" rows={3} placeholder="Observaciones adicionales..." />
       </div>
 
-      {/* ODONTOGRAMA */}
       <div className="bg-slate-900 p-8 rounded-[3rem]">
         <h3 className="text-center text-white font-black mb-8 uppercase tracking-widest">Odontograma</h3>
         <div className="flex flex-col gap-8 overflow-x-auto">
@@ -355,7 +367,6 @@ export const NuevoPaciente = ({
               {SECCIONES.SUP_IZQ.letras.map(l => <DienteComponent key={l} label={l} seccion="sup_izq" />)}
             </div>
           </div>
-
           <div className="flex justify-center gap-10 min-w-fit">
             <div className="flex gap-0.5">
               {SECCIONES.INF_DER_BAJO.letras_v2.map(l => <DienteComponent key={l} label={l} seccion="inf_der" />)}
@@ -369,7 +380,6 @@ export const NuevoPaciente = ({
             </div>
           </div>
         </div>
-
         <button type="button" onClick={() => setOdontograma({})} className="mt-6 text-white text-xs flex items-center gap-2 mx-auto hover:text-red-400 transition-colors">
           <RotateCcw className="w-4 h-4" /> Reiniciar Odontograma
         </button>
