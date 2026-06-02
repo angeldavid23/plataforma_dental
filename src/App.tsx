@@ -54,7 +54,7 @@ function App() {
     <div className="max-w-6xl mx-auto p-6">
       <header className="flex justify-between items-center mb-10">
         <div>
-          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Clínica Dental</h1>
+          <h1 className="text-4xl font-extrabold text-white tracking-tight">Clínica Dental</h1>
           <p className="text-slate-500 font-medium">Control de tratamientos y abonos</p>
         </div>
         <button 
