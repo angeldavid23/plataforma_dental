@@ -7,7 +7,10 @@ import {
   RotateCcw,
   FileText,
   Briefcase,
-  Heart
+  Heart,
+  Maximize2,
+  X,
+  CheckCircle2
 } from 'lucide-react';
 
 interface NuevoPacienteProps {
@@ -34,12 +37,11 @@ const SECCIONES = {
   }
 };
 
+// Reducido estrictamente a las 3 opciones acordadas
 const ESTADOS = [
-  { label: 'Sano', color: 'bg-emerald-500' },
-  { label: 'Caries', color: 'bg-red-500' },
-  { label: 'Ausente', color: 'bg-slate-800' },
-  { label: 'Resina', color: 'bg-blue-500' },
-  { label: 'Corona', color: 'bg-amber-500' }
+  { label: 'Sano', color: 'bg-emerald-500', fill: 'fill-emerald-500/20 hover:fill-emerald-500/40', id: 'sano', completado: false },
+  { label: 'Trabajado', color: 'bg-blue-500', fill: 'fill-blue-500 hover:fill-blue-400', id: 'trabajado', completado: true },
+  { label: 'Ausente / Extracción', color: 'bg-slate-700', fill: 'fill-slate-700/40 hover:fill-slate-600/50 opacity-40', id: 'ausente', completado: false }
 ];
 
 export const NuevoPaciente = ({
@@ -55,43 +57,18 @@ export const NuevoPaciente = ({
   const [costo, setCosto] = useState('');
 
   const [infoGeneral, setInfoGeneral] = useState({
-    direccion: '',
-    tel_casa: '',
-    tel_oficina: '',
-    ciudad: '',
-    fecha_examen: '',
-    fecha_nacimiento: '',
-    estado_civil: '',
-    ocupacion: '',
-    ocupacion_direccion: '',
-    ocupacion_tel: '',
-    recomendado_por: '',
-    referido_por: '',
-    persona_responsable: '',
-    responsable_direccion: '',
-    responsable_tel: '',
-    medico_personal: '',
-    medico_tel: '',
-    odontologo_anterior: '',
-    odontologo_tel: '',
-    direccion_cobrar: '',
-    estimado: ''
+    direccion: '', tel_casa: '', tel_oficina: '', ciudad: '', fecha_examen: '',
+    fecha_nacimiento: '', estado_civil: '', ocupacion: '', ocupacion_direccion: '',
+    ocupacion_tel: '', recomendado_por: '', referido_por: '', persona_responsable: '',
+    responsable_direccion: '', responsable_tel: '', medico_personal: '', medico_tel: '',
+    odontologo_anterior: '', odontologo_tel: '', direccion_cobrar: '', estimado: ''
   });
 
   const [historiaDental, setHistoriaDental] = useState({
-    primera_visita: false,
-    satisfactoria: false,
-    anestesia_local: false,
-    radiografias: false,
-    higiene_oral: false,
-    visitas_periodicas: false,
-    hubo_problema: false,
-    sensibilidad: {
-      calor: false, dulces: false, masticacion: false, frio: false, lesiones_previas: false
-    },
-    historia_de: {
-      chuparse_dedo: false, protrusion_lingual: false, onicofagia: false, dificultad_tragar: false, respiracion_bucal: false, mordedor_objetos: false
-    }
+    primera_visita: false, satisfactoria: false, anestesia_local: false, radiografias: false,
+    higiene_oral: false, visitas_periodicas: false, hubo_problema: false,
+    sensibilidad: { calor: false, dulces: false, masticacion: false, frio: false, lesiones_previas: false },
+    historia_de: { chuparse_dedo: false, protrusion_lingual: false, onicofagia: false, dificultad_tragar: false, respiracion_bucal: false, mordedor_objetos: false }
   });
 
   const [historiaMedica, setHistoriaMedica] = useState({
@@ -105,7 +82,8 @@ export const NuevoPaciente = ({
     sifilis: false, observaciones: ''
   });
 
-  const [odontograma, setOdontograma] = useState<Record<string, string>>({});
+  const [odontograma, setOdontograma] = useState<Record<string, { condicion: string; completado: boolean; notas: string }>>({});
+  const [isOdontogramaOpen, setIsOdontogramaOpen] = useState(false);
   const [dienteActivo, setDienteActivo] = useState<string | null>(null);
 
   useEffect(() => {
@@ -122,10 +100,24 @@ export const NuevoPaciente = ({
         if (ant.historiaDental) setHistoriaDental(ant.historiaDental);
         if (ant.historiaMedica) setHistoriaMedica(ant.historiaMedica);
       }
+      
       if (datosIniciales.odontograma) {
-        const mapa: Record<string, string> = {};
+        const mapa: Record<string, { condicion: string; completado: boolean; notas: string }> = {};
         datosIniciales.odontograma.forEach((d: any) => {
-          mapa[d.numero_diente] = d.estado;
+          try {
+            const infoObjeto = JSON.parse(d.estado);
+            mapa[d.numero_diente] = {
+              condicion: infoObjeto.condicion,
+              completado: !!infoObjeto.completado,
+              notas: d.notas || ''
+            };
+          } catch (e) {
+            mapa[d.numero_diente] = {
+              condicion: d.estado || 'sano',
+              completado: false,
+              notas: d.notas || ''
+            };
+          }
         });
         setOdontograma(mapa);
       }
@@ -134,35 +126,28 @@ export const NuevoPaciente = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     try {
       let pacienteId = datosIniciales?.id;
       const costoNumerico = parseFloat(costo) || 0;
       const antecedentes = { infoGeneral, historiaDental, historiaMedica };
 
       if (isEditing) {
-        // 1. ACTUALIZAR PACIENTE
         const { error: errorPac } = await supabase
           .from('pacientes')
           .update({ telefono: tel, antecedentes })
           .eq('id', pacienteId);
         if (errorPac) throw errorPac;
 
-        // --- LÓGICA DE SALDO CORREGIDA ---
         const tratamientoAnterior = datosIniciales.tratamientos?.[0];
         let nuevoSaldo = costoNumerico;
 
         if (tratamientoAnterior) {
           const costoAnterior = tratamientoAnterior.costo_total || 0;
           const saldoAnterior = tratamientoAnterior.saldo_pendiente || 0;
-          
-          // Calculamos la diferencia: Si el costo sube Q100, el saldo pendiente sube Q100.
-          // Si el costo no cambia, la diferencia es 0 y el saldo pendiente se queda como está.
           const diferencia = costoNumerico - costoAnterior;
           nuevoSaldo = Math.max(0, saldoAnterior + diferencia);
         }
 
-        // 2. ACTUALIZAR TRATAMIENTO (Sin machacar el saldo injustamente)
         const { error: errorTrat } = await supabase
           .from('tratamientos')
           .update({
@@ -173,15 +158,12 @@ export const NuevoPaciente = ({
           .eq('paciente_id', pacienteId);
         if (errorTrat) throw errorTrat;
 
-        // 3. LIMPIAR ODONTOGRAMA COMPLETO DEL PACIENTE ANTES DE REINSERCIÓN
-        const { error: errorDel } = await supabase
+        const { error: errorDelOdonto } = await supabase
           .from('odontograma')
           .delete()
           .eq('paciente_id', pacienteId);
-        if (errorDel) throw errorDel;
-
+        if (errorDelOdonto) throw errorDelOdonto;
       } else {
-        // CREAR NUEVO PACIENTE
         const { data: paciente, error } = await supabase
           .from('pacientes')
           .insert([{ nombre_completo: nombre, telefono: tel, antecedentes }])
@@ -198,11 +180,11 @@ export const NuevoPaciente = ({
         }]);
       }
 
-      // 4. GUARDAR NUEVOS REGISTROS DE ODONTOGRAMA
-      const registros = Object.entries(odontograma).map(([numero_diente, estado]) => ({
+      const registros = Object.entries(odontograma).map(([numero_diente, info]) => ({
         paciente_id: pacienteId,
         numero_diente,
-        estado
+        estado: JSON.stringify({ condicion: info.condicion, completado: info.completado }), 
+        notas: info.notas || ''
       }));
 
       if (registros.length > 0) {
@@ -212,7 +194,6 @@ export const NuevoPaciente = ({
 
       alert(isEditing ? 'Expediente actualizado exitosamente' : 'Expediente creado exitosamente');
       onCreated();
-
     } catch (err: any) {
       console.error(err);
       alert('Error: ' + err.message);
@@ -221,100 +202,90 @@ export const NuevoPaciente = ({
 
   const DienteComponent = ({ label, seccion }: { label: string; seccion: string; }) => {
     const id = `${label}_${seccion}`.toLowerCase();
-    const estado = odontograma[id] || 'sano';
+    const infoDiente = odontograma[id];
+
+    let fillClase = 'fill-emerald-500/20 hover:fill-emerald-500/40'; 
+
+    if (infoDiente) {
+      const coincidencia = ESTADOS.find(e => e.id === infoDiente.condicion && e.completado === infoDiente.completado);
+      fillClase = coincidencia ? coincidencia.fill : 'fill-emerald-500/20 hover:fill-emerald-500/40';
+    }
+
+    const esSeleccionado = dienteActivo === id;
 
     return (
-      <div className="flex flex-col items-center relative">
-        <div className="bg-slate-900 text-white w-7 text-[9px] font-bold py-0.5 rounded-t-sm flex justify-center">
+      <div className="flex flex-col items-center min-w-[45px]">
+        <div className="bg-slate-950 border border-slate-800 text-slate-400 w-full text-[10px] font-black py-0.5 rounded-t-lg flex justify-center shadow-inner">
           {label}
         </div>
-
         <button
           type="button"
-          onClick={() => setDienteActivo(dienteActivo === id ? null : id)}
-          className={`w-7 h-10 border transition-colors ${
-            ESTADOS.find(e => e.label.toLowerCase() === estado)?.color || 'bg-emerald-500'
+          onClick={() => setDienteActivo(esSeleccionado ? null : id)}
+          className={`w-full p-1 bg-slate-950/40 border-2 border-t-0 rounded-b-lg transition-all flex flex-col items-center justify-center ${
+            esSeleccionado ? 'border-cyan-400 scale-110 ring-4 ring-cyan-500/20 z-10' : 'border-slate-800/80 hover:bg-slate-900/60'
           }`}
         >
-          <div className="w-2 h-3 border border-white/30 rounded-sm mx-auto"></div>
+          <svg width="34" height="34" viewBox="0 0 80 80" className="drop-shadow-md select-none">
+            <polygon points="0,0 80,0 60,20 20,20" className={`${fillClase} stroke-slate-950 stroke-[3] transition-colors`} />
+            <polygon points="0,0 20,20 20,60 0,80" className={`${fillClase} stroke-slate-950 stroke-[3] transition-colors`} />
+            <polygon points="80,0 80,80 60,60 60,20" className={`${fillClase} stroke-slate-950 stroke-[3] transition-colors`} />
+            <polygon points="20,60 60,60 80,80 0,80" className={`${fillClase} stroke-slate-950 stroke-[3] transition-colors`} />
+            <polygon points="20,20 60,20 60,60 20,60" className={`${fillClase} stroke-slate-950 stroke-[3] transition-colors`} />
+          </svg>
         </button>
-
-        {dienteActivo === id && (
-          <div className="absolute top-full mt-1 w-28 bg-white shadow-xl rounded border z-[999] p-1">
-            {ESTADOS.map(e => (
-              <button
-                key={e.label}
-                type="button"
-                onClick={() => {
-                  const copia = { ...odontograma };
-                  if (e.label.toLowerCase() === 'sano') {
-                    delete copia[id];
-                  } else {
-                    copia[id] = e.label.toLowerCase();
-                  }
-                  setOdontograma(copia);
-                  setDienteActivo(null);
-                }}
-                className="w-full text-left px-2 py-1 hover:bg-slate-100 text-[9px] font-bold flex items-center gap-2"
-              >
-                <div className={`w-2 h-2 rounded-full ${e.color}`} />
-                {e.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     );
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2rem] border shadow-2xl max-w-7xl mx-auto mb-12 space-y-8">
-      {/* SECCIONES DE UI MANTENIDAS EXACTAMENTE IGUAL A TU CÓDIGO ORIGINAL */}
-      <div className="bg-slate-50 p-6 rounded-3xl border">
-        <h3 className="text-xs font-black text-slate-500 uppercase mb-6 flex items-center gap-2">
-          <FileText className="w-4 h-4" /> Información General
+    <form onSubmit={handleSubmit} className="bg-slate-950 text-slate-100 p-6 rounded-[2.5rem] border border-slate-800 shadow-2xl max-w-7xl mx-auto mb-12 space-y-8">
+      
+      {/* 1. Información General */}
+      <div className="bg-slate-900/40 p-6 rounded-3xl border border-slate-800/80">
+        <h3 className="text-xs font-black text-slate-400 uppercase mb-6 flex items-center gap-2 tracking-widest">
+          <FileText className="w-4 h-4 text-cyan-400" /> Información General
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre Completo" className="border p-2.5 rounded-xl text-sm md:col-span-2" required />
-          <input value={infoGeneral.direccion} onChange={e => setInfoGeneral({ ...infoGeneral, direccion: e.target.value })} placeholder="Dirección" className="border p-2.5 rounded-xl text-sm" />
-          <input value={infoGeneral.ciudad} onChange={e => setInfoGeneral({ ...infoGeneral, ciudad: e.target.value })} placeholder="Ciudad" className="border p-2.5 rounded-xl text-sm" />
-          <input value={infoGeneral.tel_casa} onChange={e => setInfoGeneral({ ...infoGeneral, tel_casa: e.target.value })} placeholder="Tel. Casa" className="border p-2.5 rounded-xl text-sm" />
-          <input value={tel} onChange={e => setTel(e.target.value)} placeholder="Teléfono Celular" className="border p-2.5 rounded-xl text-sm" />
+          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre Completo" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm md:col-span-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" required />
+          <input value={infoGeneral.direccion} onChange={e => setInfoGeneral({ ...infoGeneral, direccion: e.target.value })} placeholder="Dirección" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
+          <input value={infoGeneral.ciudad} onChange={e => setInfoGeneral({ ...infoGeneral, ciudad: e.target.value })} placeholder="Ciudad" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
+          <input value={infoGeneral.tel_casa} onChange={e => setInfoGeneral({ ...infoGeneral, tel_casa: e.target.value })} placeholder="Tel. Casa" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
+          <input value={tel} onChange={e => setTel(e.target.value)} placeholder="Teléfono Celular" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
           
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-500 ml-1 uppercase">Fecha de Examen</label>
-            <input type="date" value={infoGeneral.fecha_examen} onChange={e => setInfoGeneral({ ...infoGeneral, fecha_examen: e.target.value })} className="border p-2.5 rounded-xl text-sm w-full" />
+            <label className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-wider">Fecha de Examen</label>
+            <input type="date" value={infoGeneral.fecha_examen} onChange={e => setInfoGeneral({ ...infoGeneral, fecha_examen: e.target.value })} className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm w-full text-white focus:outline-none focus:border-cyan-500 color-scheme-dark" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-slate-500 ml-1 uppercase">Fecha de Nacimiento</label>
-            <input type="date" value={infoGeneral.fecha_nacimiento} onChange={e => setInfoGeneral({ ...infoGeneral, fecha_nacimiento: e.target.value })} className="border p-2.5 rounded-xl text-sm w-full" />
+            <label className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-wider">Fecha de Nacimiento</label>
+            <input type="date" value={infoGeneral.fecha_nacimiento} onChange={e => setInfoGeneral({ ...infoGeneral, fecha_nacimiento: e.target.value })} className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm w-full text-white focus:outline-none focus:border-cyan-500 color-scheme-dark" />
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-          <input value={infoGeneral.estado_civil} onChange={e => setInfoGeneral({ ...infoGeneral, estado_civil: e.target.value })} placeholder="Estado Civil" className="border p-2.5 rounded-xl text-sm" />
-          <input value={infoGeneral.ocupacion} onChange={e => setInfoGeneral({ ...infoGeneral, ocupacion: e.target.value })} placeholder="Ocupación" className="border p-2.5 rounded-xl text-sm" />
-          <input value={infoGeneral.recomendado_por} onChange={e => setInfoGeneral({ ...infoGeneral, recomendado_por: e.target.value })} placeholder="Recomendado por" className="border p-2.5 rounded-xl text-sm" />
+          <input value={infoGeneral.estado_civil} onChange={e => setInfoGeneral({ ...infoGeneral, estado_civil: e.target.value })} placeholder="Estado Civil" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
+          <input value={infoGeneral.ocupacion} onChange={e => setInfoGeneral({ ...infoGeneral, ocupacion: e.target.value })} placeholder="Ocupación" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
+          <input value={infoGeneral.recomendado_por} onChange={e => setInfoGeneral({ ...infoGeneral, recomendado_por: e.target.value })} placeholder="Recomendado por" className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" />
         </div>
 
-        <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 p-4 bg-emerald-50/50 rounded-2xl border border-dashed border-emerald-200">
+        <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 p-4 bg-emerald-950/10 rounded-2xl border border-dashed border-emerald-900/60">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-emerald-700 ml-1 uppercase">Servicio / Tratamiento</label>
+            <label className="text-[10px] font-black text-emerald-400 ml-1 uppercase tracking-wider">Servicio / Tratamiento</label>
             <div className="relative">
-              <Briefcase className="w-4 h-4 absolute left-3 top-3 text-emerald-600" />
-              <input value={servicio} onChange={e => setServicio(e.target.value)} placeholder="Ej: Ortodoncia, Resinas..." className="w-full border p-2.5 pl-9 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+              <Briefcase className="w-4 h-4 absolute left-3 top-3 text-emerald-500" />
+              <input value={servicio} onChange={e => setServicio(e.target.value)} placeholder="Ej: Ortodoncia, Resinas..." className="w-full bg-slate-900 border border-slate-800 p-2.5 pl-9 rounded-xl text-sm text-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-600" />
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black text-emerald-700 ml-1 uppercase">Costo Total (Q)</label>
-            <input type="number" value={costo} onChange={e => setCosto(e.target.value)} placeholder="0.00" className="w-full border p-2.5 rounded-xl text-sm font-mono focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <label className="text-[10px] font-black text-emerald-400 ml-1 uppercase tracking-wider">Costo Total (Q)</label>
+            <input type="number" value={costo} onChange={e => setCosto(e.target.value)} placeholder="0.00" className="w-full bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-sm font-mono text-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-600" />
           </div>
         </div>
       </div>
 
-      {/* RESTO DE SECCIONES... (HISTORIA DENTAL, MÉDICA, ODONTOGRAMA) */}
-      <div className="bg-emerald-50 p-6 rounded-3xl border">
-        <h3 className="text-xs font-black text-emerald-700 uppercase mb-4 flex items-center gap-2">
+      {/* 2. Historia Dental */}
+      <div className="bg-slate-900/40 p-6 rounded-3xl border border-slate-800/80">
+        <h3 className="text-xs font-black text-emerald-400 uppercase mb-4 flex items-center gap-2 tracking-widest">
           <ClipboardList className="w-4 h-4" /> Historia Dental
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -327,65 +298,221 @@ export const NuevoPaciente = ({
             ['visitas_periodicas', 'Visitas periódicas'],
             ['hubo_problema', '¿Hubo algún problema?']
           ].map(([id, label]) => (
-            <label key={id} className="flex items-center gap-2 bg-white p-2 rounded-lg border cursor-pointer hover:bg-slate-50 transition-colors">
-              <input type="checkbox" checked={(historiaDental as any)[id]} onChange={e => setHistoriaDental({ ...historiaDental, [id]: e.target.checked })} />
+            <label key={id} className="flex items-center gap-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 cursor-pointer hover:bg-slate-800/60 transition-colors text-slate-300">
+              <input type="checkbox" checked={(historiaDental as any)[id]} onChange={e => setHistoriaDental({ ...historiaDental, [id]: e.target.checked })} className="rounded bg-slate-950 border-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 w-4 h-4" />
               <span className="text-[11px] font-bold">{label}</span>
             </label>
           ))}
         </div>
       </div>
 
-      <div className="bg-red-50 p-6 rounded-3xl border">
-        <h3 className="text-xs font-black text-red-700 uppercase mb-4 flex items-center gap-2">
+      {/* 3. Historia Médica */}
+      <div className="bg-slate-900/40 p-6 rounded-3xl border border-slate-800/80">
+        <h3 className="text-xs font-black text-red-400 uppercase mb-4 flex items-center gap-2 tracking-widest">
           <Heart className="w-4 h-4" /> Historia Médica
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {Object.entries(historiaMedica)
             .filter(([key]) => key !== 'observaciones')
             .map(([key, value]) => (
-              <label key={key} className="flex items-center gap-2 bg-white p-2 rounded-lg border cursor-pointer hover:bg-slate-50 transition-colors">
-                <input type="checkbox" checked={value as boolean} onChange={e => setHistoriaMedica({ ...historiaMedica, [key]: e.target.checked })} />
+              <label key={key} className="flex items-center gap-3 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80 cursor-pointer hover:bg-slate-800/60 transition-colors text-slate-300">
+                <input type="checkbox" checked={value as boolean} onChange={e => setHistoriaMedica({ ...historiaMedica, [key]: e.target.checked })} className="rounded bg-slate-950 border-slate-800 text-cyan-500 focus:ring-0 focus:ring-offset-0 w-4 h-4" />
                 <span className="text-[10px] font-bold capitalize">{key.replaceAll('_', ' ')}</span>
               </label>
             ))}
         </div>
-        <textarea value={historiaMedica.observaciones} onChange={e => setHistoriaMedica({ ...historiaMedica, observaciones: e.target.value })} className="w-full border mt-4 p-3 rounded-xl text-sm" rows={3} placeholder="Observaciones adicionales..." />
+        <textarea value={historiaMedica.observaciones} onChange={e => setHistoriaMedica({ ...historiaMedica, observaciones: e.target.value })} className="w-full bg-slate-900 border border-slate-800 mt-4 p-3 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 resize-none" rows={3} placeholder="Observaciones adicionales..." />
       </div>
 
-      <div className="bg-slate-900 p-8 rounded-[3rem]">
-        <h3 className="text-center text-white font-black mb-8 uppercase tracking-widest">Odontograma</h3>
-        <div className="flex flex-col gap-8 overflow-x-auto">
-          <div className="flex justify-center gap-10 min-w-fit">
-            <div className="flex gap-0.5">
-              {SECCIONES.SUP_DER.letras.map(l => <DienteComponent key={l} label={l} seccion="sup_der" />)}
-              <div className="w-2"></div>
-              {SECCIONES.SUP_DER.numeros.map(n => <DienteComponent key={n} label={n} seccion="sup_der" />)}
-            </div>
-            <div className="flex gap-0.5">
-              {SECCIONES.SUP_IZQ.numeros.map(n => <DienteComponent key={n} label={n} seccion="sup_izq" />)}
-              <div className="w-2"></div>
-              {SECCIONES.SUP_IZQ.letras.map(l => <DienteComponent key={l} label={l} seccion="sup_izq" />)}
-            </div>
-          </div>
-          <div className="flex justify-center gap-10 min-w-fit">
-            <div className="flex gap-0.5">
-              {SECCIONES.INF_DER_BAJO.letras_v2.map(l => <DienteComponent key={l} label={l} seccion="inf_der" />)}
-              <div className="w-2"></div>
-              {SECCIONES.INF_DER_BAJO.numeros_v2.map(n => <DienteComponent key={n} label={n} seccion="inf_der" />)}
-            </div>
-            <div className="flex gap-0.5">
-              {SECCIONES.INF_IZQ_BAJO.numeros_v2.map(n => <DienteComponent key={n} label={n} seccion="inf_izq" />)}
-              <div className="w-2"></div>
-              {SECCIONES.INF_IZQ_BAJO.letras_v2.map(l => <DienteComponent key={l} label={l} seccion="inf_izq" />)}
-            </div>
-          </div>
+      {/* 4. SECCIÓN DEL ODONTOGRAMA MINIMIZADO */}
+      <div className="bg-slate-900 border border-slate-800 p-6 rounded-[2rem] text-white flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+        <div className="space-y-1 text-center md:text-left">
+          <h3 className="font-black uppercase tracking-wider text-sm md:text-base text-cyan-400">Odontograma Clínico e Historial</h3>
+          <p className="text-xs text-slate-400">
+            {Object.keys(odontograma).length} dientes con hallazgos o tratamientos registrados en esta sesión.
+          </p>
         </div>
-        <button type="button" onClick={() => setOdontograma({})} className="mt-6 text-white text-xs flex items-center gap-2 mx-auto hover:text-red-400 transition-colors">
-          <RotateCcw className="w-4 h-4" /> Reiniciar Odontograma
+        <button
+          type="button"
+          onClick={() => setIsOdontogramaOpen(true)}
+          className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-black text-xs md:text-sm px-6 py-3 rounded-2xl flex items-center gap-2 transition-all active:scale-95 w-full md:w-auto justify-center shadow-md shadow-cyan-500/10"
+        >
+          <Maximize2 className="w-4 h-4" /> CONFIGURAR ODONTOGRAMA
         </button>
       </div>
 
-      <button type="submit" className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black text-xl flex items-center justify-center gap-4 hover:bg-slate-800 transition-all shadow-xl active:scale-[0.98]">
+      {/* MODAL EXPANDIDO COMPLETO */}
+      {isOdontogramaOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-0 md:p-4 animate-fadeIn">
+          <div className="bg-slate-900 w-full h-full md:max-w-7xl md:h-[92vh] md:rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+            
+            {/* Cabecera del Modal */}
+            <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
+              <div>
+                <h3 className="text-white text-lg font-black uppercase tracking-wider">Editor Avanzado de Odontograma</h3>
+                <p className="text-xs text-slate-400">Selecciona un diente para registrar estados y comentarios clínicos.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOdontogramaOpen(false);
+                  setDienteActivo(null);
+                }}
+                className="bg-slate-800 hover:bg-red-500 hover:text-white text-slate-400 p-2.5 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Cuerpo del Modal */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              
+              <div className="bg-slate-950/50 p-6 rounded-3xl border border-slate-800/80 overflow-x-auto">
+                <div className="flex flex-col gap-10 w-max mx-auto p-4">
+                  {/* Arcada Superior */}
+                  <div className="flex gap-12">
+                    <div className="flex gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
+                      {SECCIONES.SUP_DER.letras.map(l => <DienteComponent key={l} label={l} seccion="sup_der" />)}
+                      <div className="w-2 border-r border-dashed border-slate-800 my-2"></div>
+                      {SECCIONES.SUP_DER.numeros.map(n => <DienteComponent key={n} label={n} seccion="sup_der" />)}
+                    </div>
+                    <div className="flex gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
+                      {SECCIONES.SUP_IZQ.numeros.map(n => <DienteComponent key={n} label={n} seccion="sup_izq" />)}
+                      <div className="w-2 border-r border-dashed border-slate-800 my-2"></div>
+                      {SECCIONES.SUP_IZQ.letras.map(l => <DienteComponent key={l} label={l} seccion="sup_izq" />)}
+                    </div>
+                  </div>
+
+                  {/* Arcada Inferior */}
+                  <div className="flex gap-12">
+                    <div className="flex gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
+                      {SECCIONES.INF_DER_BAJO.letras_v2.map(l => <DienteComponent key={l} label={l} seccion="inf_der" />)}
+                      <div className="w-2 border-r border-dashed border-slate-800 my-2"></div>
+                      {SECCIONES.INF_DER_BAJO.numeros_v2.map(n => <DienteComponent key={n} label={n} seccion="inf_der" />)}
+                    </div>
+                    <div className="flex gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
+                      {SECCIONES.INF_IZQ_BAJO.numeros_v2.map(n => <DienteComponent key={n} label={n} seccion="inf_izq" />)}
+                      <div className="w-2 border-r border-dashed border-slate-800 my-2"></div>
+                      {SECCIONES.INF_IZQ_BAJO.letras_v2.map(l => <DienteComponent key={l} label={l} seccion="inf_izq" />)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* PANEL DE DETALLE Y TEXTO DINÁMICO */}
+              <div className="bg-slate-950/30 border border-slate-800 rounded-3xl p-6 min-h-[180px] flex flex-col justify-center">
+                {dienteActivo ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+                    
+                    {/* Columna 1: Info del Diente */}
+                    <div className="flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-slate-800 pb-4 lg:pb-0">
+                      <span className="text-xs font-black text-cyan-400 tracking-widest uppercase">DIENTE SELECCIONADO</span>
+                      <h4 className="text-3xl font-black text-white capitalize mt-1">
+                        {dienteActivo.replace('_', ' ')}
+                      </h4>
+                      <p className="text-slate-400 text-xs mt-2">
+                        Estado actual: <span className="text-white font-bold capitalize">{odontograma[dienteActivo]?.condicion || 'sano'}</span>
+                      </p>
+                    </div>
+
+                    {/* Columna 2: Selector de Estados (Solo las 3 opciones principales) */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-1">CAMBIAR CONDICIÓN</span>
+                      <div className="grid grid-cols-1 gap-1.5 max-h-[150px] overflow-y-auto pr-1">
+                        {ESTADOS.map(e => {
+                          const isSelected = (odontograma[dienteActivo]?.condicion || 'sano') === e.id;
+                          return (
+                            <button
+                              key={e.label}
+                              type="button"
+                              onClick={() => {
+                                const copia = { ...odontograma };
+                                // Inicializamos el diente en el mapa si aún no existe para que se puedan guardar notas
+                                copia[dienteActivo] = { 
+                                  condicion: e.id, 
+                                  completado: e.completado, 
+                                  notas: copia[dienteActivo]?.notas || '' 
+                                };
+                                setOdontograma(copia);
+                              }}
+                              className={`text-left px-3 py-2.5 rounded-lg text-xs font-bold flex items-center gap-3 border transition-all ${
+                                isSelected
+                                  ? 'bg-slate-800 border-cyan-400 text-white scale-[1.01] shadow-md'
+                                  : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                              }`}
+                            >
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${e.color}`} />
+                              <span className="truncate">{e.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Columna 3: Entrada de Notas (Siempre habilitado) */}
+                    <div className="flex flex-col justify-between">
+                      <div className="flex flex-col h-full">
+                        <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-1">
+                          NOTAS CLÍNICAS / EVOLUCIÓN
+                        </span>
+                        <textarea
+                          value={odontograma[dienteActivo]?.notas || ''}
+                          disabled={false} // Desbloqueado permanentemente
+                          onChange={e => {
+                            const copia = { ...odontograma };
+                            // Si el diente no tiene estado aún, le aseguramos 'sano' por defecto para guardar la nota
+                            if (!copia[dienteActivo]) {
+                              copia[dienteActivo] = { condicion: 'sano', completado: false, notas: '' };
+                            }
+                            copia[dienteActivo].notas = e.target.value;
+                            setOdontograma(copia);
+                          }}
+                          placeholder="Escribe aquí el diagnóstico, observaciones o notas de evolución para este diente..."
+                          className="w-full flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 resize-none min-h-[90px]"
+                        />
+                      </div>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-slate-500">
+                    <p className="text-sm font-medium">No hay ningún diente seleccionado.</p>
+                    <p className="text-xs mt-1">Haz clic sobre cualquier diente de la arcada para registrar su diagnóstico o notas de evolución.</p>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Pie del Modal */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between">
+              <button 
+                type="button" 
+                onClick={() => {
+                  if(confirm('¿Estás seguro de reiniciar el odontograma visual de esta sesión?')) setOdontograma({});
+                }} 
+                className="text-slate-400 hover:text-red-400 text-xs flex items-center gap-2 transition-colors px-3 py-2"
+              >
+                <RotateCcw className="w-4 h-4" /> Reiniciar Cambios Visuales
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOdontogramaOpen(false);
+                  setDienteActivo(null);
+                }}
+                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs px-6 py-3 rounded-xl flex items-center gap-2 transition-all shadow-md"
+              >
+                <CheckCircle2 className="w-4 h-4" /> CONFIRMAR Y VOLVER AL FORMULARIO
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Botón Principal del Formulario */}
+      <button type="submit" className="w-full py-5 bg-cyan-500 text-slate-950 rounded-3xl font-black text-xl flex items-center justify-center gap-4 hover:bg-cyan-400 transition-all shadow-xl active:scale-[0.98]">
         {isEditing ? <Save className="w-6 h-6" /> : <PlusCircle className="w-6 h-6" />}
         {isEditing ? 'ACTUALIZAR EXPEDIENTE' : 'CREAR EXPEDIENTE'}
       </button>
