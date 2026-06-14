@@ -102,7 +102,7 @@ export const NuevoPaciente = ({
   const [strokesTemporales, setStrokesTemporales] = useState<Stroke[]>([]);
   const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
   const [strokeColor, setStrokeColor] = useState<string>('#EF4444');
-  const [strokeWidth, setStrokeWidth] = useState<number>(4);
+  const [strokeWidth] = useState<number>(4);
 
   // Sincronizar los trazos del lienzo cuando el odontólogo cambie de pieza dental
   useEffect(() => {
