@@ -12,6 +12,10 @@ import {
   X,
   CheckCircle2
 } from 'lucide-react';
+// IMPORTACIÓN DEL CANVAS INTERACTIVO Y SUS HERRAMIENTAS
+import { OdontogramaCanvas } from './odontogram/OdontogramCanvas';
+import { OdontogramaToolbar } from './odontogram/OdontogramToolbar';
+import type { Stroke } from '../types/odontogram';
 
 interface NuevoPacienteProps {
   onCreated: () => void;
@@ -37,12 +41,19 @@ const SECCIONES = {
   }
 };
 
-// Reducido estrictamente a las 3 opciones acordadas
 const ESTADOS = [
   { label: 'Sano', color: 'bg-emerald-500', fill: 'fill-emerald-500/20 hover:fill-emerald-500/40', id: 'sano', completado: false },
   { label: 'Trabajado', color: 'bg-blue-500', fill: 'fill-blue-500 hover:fill-blue-400', id: 'trabajado', completado: true },
   { label: 'Ausente / Extracción', color: 'bg-slate-700', fill: 'fill-slate-700/40 hover:fill-slate-600/50 opacity-40', id: 'ausente', completado: false }
 ];
+
+// Definición estricta del objeto de cada diente incluyendo sus vectores
+interface DienteEstado {
+  condicion: string;
+  completado: boolean;
+  notas: string;
+  strokes: Stroke[];
+}
 
 export const NuevoPaciente = ({
   onCreated,
@@ -68,7 +79,7 @@ export const NuevoPaciente = ({
     primera_visita: false, satisfactoria: false, anestesia_local: false, radiografias: false,
     higiene_oral: false, visitas_periodicas: false, hubo_problema: false,
     sensibilidad: { calor: false, dulces: false, masticacion: false, frio: false, lesiones_previas: false },
-    historia_de: { chuparse_dedo: false, protrusion_lingual: false, onicofagia: false, dificultad_tragar: false, respiracion_bucal: false, mordedor_objetos: false }
+    history_de: { chuparse_dedo: false, protrusion_lingual: false, onicofagia: false, dificultad_tragar: false, respiracion_bucal: false, mordedor_objetos: false }
   });
 
   const [historiaMedica, setHistoriaMedica] = useState({
@@ -82,10 +93,28 @@ export const NuevoPaciente = ({
     sifilis: false, observaciones: ''
   });
 
-  const [odontograma, setOdontograma] = useState<Record<string, { condicion: string; completado: boolean; notas: string }>>({});
+  // ESTADO MAESTRO OPTIMIZADO PARA PERSISTIR CONDICIÓN, NOTAS Y DIBUJOS VECTORIALES
+  const [odontograma, setOdontograma] = useState<Record<string, DienteEstado>>({});
   const [isOdontogramaOpen, setIsOdontogramaOpen] = useState(false);
   const [dienteActivo, setDienteActivo] = useState<string | null>(null);
 
+  // ESTADOS REACTIVOS TEMPORALES PARA EL LIENZO ACTUAL EN EDICIÓN
+  const [strokesTemporales, setStrokesTemporales] = useState<Stroke[]>([]);
+  const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
+  const [strokeColor, setStrokeColor] = useState<string>('#EF4444');
+  const [strokeWidth, setStrokeWidth] = useState<number>(4);
+
+  // Sincronizar los trazos del lienzo cuando el odontólogo cambie de pieza dental
+  useEffect(() => {
+    if (dienteActivo) {
+      const datosDienteExistente = odontograma[dienteActivo];
+      setStrokesTemporales(datosDienteExistente?.strokes || []);
+    } else {
+      setStrokesTemporales([]);
+    }
+  }, [dienteActivo, odontograma]);
+
+  // Carga inicial en modo edición
   useEffect(() => {
     if (isEditing && datosIniciales) {
       setNombre(datosIniciales.nombre_completo || '');
@@ -102,20 +131,22 @@ export const NuevoPaciente = ({
       }
       
       if (datosIniciales.odontograma) {
-        const mapa: Record<string, { condicion: string; completado: boolean; notas: string }> = {};
+        const mapa: Record<string, DienteEstado> = {};
         datosIniciales.odontograma.forEach((d: any) => {
           try {
             const infoObjeto = JSON.parse(d.estado);
             mapa[d.numero_diente] = {
-              condicion: infoObjeto.condicion,
+              condicion: infoObjeto.condicion || 'sano',
               completado: !!infoObjeto.completado,
-              notas: d.notas || ''
+              notas: d.notas || '',
+              strokes: Array.isArray(infoObjeto.strokes) ? infoObjeto.strokes : []
             };
           } catch (e) {
             mapa[d.numero_diente] = {
               condicion: d.estado || 'sano',
               completado: false,
-              notas: d.notas || ''
+              notas: d.notas || '',
+              strokes: []
             };
           }
         });
@@ -180,10 +211,15 @@ export const NuevoPaciente = ({
         }]);
       }
 
+      // GUARDADO REAL CON EL ARREGLO DE TRAZOS SERIALIZADO EN EL CAMPO 'ESTADO'
       const registros = Object.entries(odontograma).map(([numero_diente, info]) => ({
         paciente_id: pacienteId,
         numero_diente,
-        estado: JSON.stringify({ condicion: info.condicion, completado: info.completado }), 
+        estado: JSON.stringify({ 
+          condicion: info.condicion, 
+          completado: info.completado,
+          strokes: info.strokes // Guardamos tus dibujos aquí
+        }), 
         notas: info.notas || ''
       }));
 
@@ -344,7 +380,7 @@ export const NuevoPaciente = ({
       {/* MODAL EXPANDIDO COMPLETO */}
       {isOdontogramaOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-0 md:p-4 animate-fadeIn">
-          <div className="bg-slate-900 w-full h-full md:max-w-7xl md:h-[92vh] md:rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-slate-900 w-full h-full md:max-w-7xl md:h-[95vh] md:rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
             
             {/* Cabecera del Modal */}
             <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-950/40">
@@ -365,10 +401,10 @@ export const NuevoPaciente = ({
             </div>
 
             {/* Cuerpo del Modal */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
               
-              <div className="bg-slate-950/50 p-6 rounded-3xl border border-slate-800/80 overflow-x-auto">
-                <div className="flex flex-col gap-10 w-max mx-auto p-4">
+              <div className="bg-slate-950/50 p-4 rounded-3xl border border-slate-800/80 overflow-x-auto">
+                <div className="flex flex-col gap-6 w-max mx-auto p-2">
                   {/* Arcada Superior */}
                   <div className="flex gap-12">
                     <div className="flex gap-1.5 bg-slate-900/60 p-2.5 rounded-2xl border border-slate-800/80">
@@ -399,8 +435,64 @@ export const NuevoPaciente = ({
                 </div>
               </div>
 
-              {/* PANEL DE DETALLE Y TEXTO DINÁMICO */}
-              <div className="bg-slate-950/30 border border-slate-800 rounded-3xl p-6 min-h-[180px] flex flex-col justify-center">
+              {/* INTERFACES DEL CANVAS INTEGRADOS DE FORMA REAL */}
+              <div className="bg-slate-950/40 p-4 rounded-3xl border border-slate-800 relative min-h-[480px] flex flex-col items-center justify-center">
+                {dienteActivo ? (
+                  <div className="w-full space-y-4">
+                    {/* Barra de herramientas flotante del lienzo */}
+                    <div className="flex justify-between items-center bg-slate-900 p-2 rounded-xl border border-slate-800">
+                      <OdontogramaToolbar 
+                        tool={tool} 
+                        setTool={setTool} 
+                        strokeColor={strokeColor} 
+                        setStrokeColor={setStrokeColor} 
+                      />
+                      <span className="text-[10px] text-cyan-400 font-mono font-bold uppercase bg-cyan-950/60 px-3 py-1.5 rounded-lg border border-cyan-800/50">
+                        Modo Dibujo Activo
+                      </span>
+                    </div>
+
+                    {/* RENDERING REAL UTILIZANDO EL ESTADO INTERMEDIO REACTIVO */}
+                    <OdontogramaCanvas 
+                      dienteId={dienteActivo}
+                      strokes={strokesTemporales}
+                      setStrokes={(trazosNuevos) => {
+                        // 1. Ejecutar actualización reactiva local en pantalla
+                        setStrokesTemporales(trazosNuevos);
+                        
+                        // 2. Inyectar automáticamente el arreglo de vectores dentro del estado maestro
+                        setOdontograma(prev => {
+                          const copia = { ...prev };
+                          const elementoActual = copia[dienteActivo] || { condicion: 'sano', completado: false, notas: '', strokes: [] };
+                          
+                          // Evaluamos si el callback de React es una función o un valor directo
+                          const trazosActualizados = typeof trazosNuevos === 'function' 
+                            ? trazosNuevos(elementoActual.strokes) 
+                            : trazosNuevos;
+
+                          copia[dienteActivo] = {
+                            ...elementoActual,
+                            strokes: trazosActualizados
+                          };
+                          return copia;
+                        });
+                      }}
+                      tool={tool}
+                      strokeWidth={strokeWidth}
+                      strokeColor={strokeColor}
+                      zoom={1}
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-500">
+                    <p className="text-sm font-medium">No hay ningún diente seleccionado.</p>
+                    <p className="text-xs mt-1">Haz clic sobre cualquier diente de la arcada superior o inferior para cargar su lienzo anatómico y dibujar.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* PANEL DE DETALLE Y CONDICIONES */}
+              <div className="bg-slate-950/30 border border-slate-800 rounded-3xl p-6 min-h-[160px] flex flex-col justify-center">
                 {dienteActivo ? (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
                     
@@ -415,7 +507,7 @@ export const NuevoPaciente = ({
                       </p>
                     </div>
 
-                    {/* Columna 2: Selector de Estados (Solo las 3 opciones principales) */}
+                    {/* Columna 2: Selector de Estados */}
                     <div className="space-y-2">
                       <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-1">CAMBIAR CONDICIÓN</span>
                       <div className="grid grid-cols-1 gap-1.5 max-h-[150px] overflow-y-auto pr-1">
@@ -426,14 +518,16 @@ export const NuevoPaciente = ({
                               key={e.label}
                               type="button"
                               onClick={() => {
-                                const copia = { ...odontograma };
-                                // Inicializamos el diente en el mapa si aún no existe para que se puedan guardar notas
-                                copia[dienteActivo] = { 
-                                  condicion: e.id, 
-                                  completado: e.completado, 
-                                  notas: copia[dienteActivo]?.notas || '' 
-                                };
-                                setOdontograma(copia);
+                                setOdontograma(prev => {
+                                  const copia = { ...prev };
+                                  const dentalExistente = copia[dienteActivo] || { condicion: 'sano', completado: false, notas: '', strokes: [] };
+                                  copia[dienteActivo] = { 
+                                    ...dentalExistente,
+                                    condicion: e.id, 
+                                    completado: e.completado, 
+                                  };
+                                  return copia;
+                                });
                               }}
                               className={`text-left px-3 py-2.5 rounded-lg text-xs font-bold flex items-center gap-3 border transition-all ${
                                 isSelected
@@ -449,25 +543,25 @@ export const NuevoPaciente = ({
                       </div>
                     </div>
 
-                    {/* Columna 3: Entrada de Notas (Siempre habilitado) */}
+                    {/* Columna 3: Entrada de Notas */}
                     <div className="flex flex-col justify-between">
                       <div className="flex flex-col h-full">
                         <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block mb-1">
                           NOTAS CLÍNICAS / EVOLUCIÓN
                         </span>
                         <textarea
-                          value={odontograma[dienteActivo]?.notas || ''}
-                          disabled={false} // Desbloqueado permanentemente
+                          value={odontograma[dienteActivo]?.notas || odontograma[dienteActivo]?.notas || ''}
                           onChange={e => {
-                            const copia = { ...odontograma };
-                            // Si el diente no tiene estado aún, le aseguramos 'sano' por defecto para guardar la nota
-                            if (!copia[dienteActivo]) {
-                              copia[dienteActivo] = { condicion: 'sano', completado: false, notas: '' };
-                            }
-                            copia[dienteActivo].notas = e.target.value;
-                            setOdontograma(copia);
+                            setOdontograma(prev => {
+                              const copia = { ...prev };
+                              if (!copia[dienteActivo]) {
+                                copia[dienteActivo] = { condicion: 'sano', completado: false, notas: '', strokes: [] };
+                              }
+                              copia[dienteActivo].notas = e.target.value;
+                              return copia;
+                            });
                           }}
-                          placeholder="Escribe aquí el diagnóstico, observaciones o notas de evolución para este diente..."
+                          placeholder="Escribe aquí el diagnóstico, observaciones o notas de evolución..."
                           className="w-full flex-1 bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 resize-none min-h-[90px]"
                         />
                       </div>
@@ -475,9 +569,8 @@ export const NuevoPaciente = ({
 
                   </div>
                 ) : (
-                  <div className="text-center py-6 text-slate-500">
-                    <p className="text-sm font-medium">No hay ningún diente seleccionado.</p>
-                    <p className="text-xs mt-1">Haz clic sobre cualquier diente de la arcada para registrar su diagnóstico o notas de evolución.</p>
+                  <div className="text-center py-4 text-slate-500">
+                    <p className="text-xs">Selecciona un diente de la arcada para habilitar notas y estados.</p>
                   </div>
                 )}
               </div>
@@ -489,7 +582,10 @@ export const NuevoPaciente = ({
               <button 
                 type="button" 
                 onClick={() => {
-                  if(confirm('¿Estás seguro de reiniciar el odontograma visual de esta sesión?')) setOdontograma({});
+                  if(confirm('¿Estás seguro de reiniciar el odontograma de esta sesión?')) {
+                    setOdontograma({});
+                    setStrokesTemporales([]);
+                  }
                 }} 
                 className="text-slate-400 hover:text-red-400 text-xs flex items-center gap-2 transition-colors px-3 py-2"
               >
